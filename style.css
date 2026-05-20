@@ -1,0 +1,150 @@
+/* =========================
+   LUMA • STYLE
+   ========================= */
+
+:root {
+  --luma-primary: #9333ea;
+  --luma-secondary: #4f46e5;
+  --luma-soft: #f3e8ff;
+}
+
+/* Scroll invisível */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Corpo */
+
+body {
+  font-family: sans-serif;
+  overflow: hidden;
+}
+
+/* Humor */
+
+.mood-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #f8fafc;
+  transition: 0.2s ease;
+  font-size: 15px;
+}
+
+.mood-btn:hover {
+  transform: scale(1.08);
+}
+
+.mood-btn.active {
+  background: var(--luma-soft);
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px var(--luma-primary);
+}
+
+/* Header */
+
+#app-header {
+  background: linear-gradient(
+    to right,
+    var(--luma-primary),
+    var(--luma-secondary)
+  ) !important;
+}
+
+/* Botões */
+
+#send-btn,
+#save-settings-btn {
+  background: var(--luma-primary) !important;
+}
+
+button {
+  transition: 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active {
+  transform: scale(0.96);
+}
+
+/* Inputs */
+
+input,
+select,
+button {
+  font-family: inherit;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--luma-primary) !important;
+  box-shadow: 0 0 0 2px var(--luma-soft);
+}
+
+/* Navegação */
+
+.nav-item {
+  transition: 0.2s ease;
+}
+
+.nav-item:hover {
+  transform: translateY(-2px);
+}
+
+/* Chat */
+
+#chat-box > div {
+  animation: fadeMessage 0.25s ease;
+}
+
+@keyframes fadeMessage {
+
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+}
+
+/* Cards */
+
+.bg-white {
+  transition: 0.2s ease;
+}
+
+/* Gráfico */
+
+canvas {
+  max-width: 100%;
+}
+
+/* Mobile */
+
+#app-shell {
+  max-width: 100vw;
+}
+
+@media (max-width: 430px) {
+
+  #app-shell {
+    width: 100vw !important;
+    height: 100vh !important;
+    border-radius: 0 !important;
+    border-width: 0 !important;
+  }
+
+  #app-header {
+    border-radius: 0 0 30px 30px !important;
+  }
+
+}
