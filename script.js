@@ -1,323 +1,844 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+// =========================================
+// 🌙 LUMA APP - SCRIPT.JS COMPLETO
+// Menu + Chat + Diário + IA kcal + Água + Histórico + Peso + Gráficos + Ajustes
+// =========================================
 
-  <title>Luma - Jornada Saudável</title>
+const API_BASE = "https://luma-api-m5vh.onrender.com";
+const CHAT_API = `${API_BASE}/api/chat`;
+const CALORIA_API = `${API_BASE}/api/estimar-caloria`;
 
-  <script src="https://cdn.tailwindcss.com"></script>
+const todayISO = new Date().toISOString().split("T")[0];
 
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
-  />
+let lastView = "apoio";
+let currentMealTarget = "";
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+let totalCalorias = Number(localStorage.getItem("luma_total_calorias")) || 0;
+let totalAgua = Number(localStorage.getItem("luma_total_agua")) || 0;
 
-  <link rel="stylesheet" href="style.css" />
-</head>
+let weightChartInstance = null;
+let comboChartInstance = null;
 
-<body class="bg-gray-100 flex justify-center items-center min-h-screen">
+// ELEMENTOS
 
-  <div id="app-shell" class="bg-white w-[375px] h-[712px] rounded-[40px] shadow-2xl overflow-hidden flex flex-col relative border-8 border-gray-800">
+const navApoio = document.getElementById("nav-apoio");
+const navDiario = document.getElementById("nav-diario");
+const navEvolucao = document.getElementById("nav-evolucao");
 
-    <header id="app-header" class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white pt-8 pb-4 px-6 rounded-b-[30px] shadow-md flex justify-between items-center z-10">
-      <div>
-        <h1 id="header-title" class="text-xl font-bold tracking-wide">Sua Jornada</h1>
-        <p id="header-subtitle" class="text-xs text-purple-200">Estou aqui com você 💜</p>
+const viewChat = document.getElementById("view-chat");
+const viewDiary = document.getElementById("view-diary");
+const viewEvolucao = document.getElementById("view-evolucao");
+const viewSettings = document.getElementById("view-settings");
+
+const openSettingsBtn = document.getElementById("open-settings-btn");
+const settingsIcon = document.getElementById("settings-icon");
+const headerTitle = document.getElementById("header-title");
+const headerSubtitle = document.getElementById("header-subtitle");
+
+const sendBtn = document.getElementById("send-btn");
+const userInput = document.getElementById("user-input");
+const chatBox = document.getElementById("chat-box");
+const typingIndicator = document.getElementById("typing-indicator");
+
+const calConsumed = document.getElementById("cal-consumed");
+const waterCount = document.getElementById("water-count");
+const waterGoalLabel = document.getElementById("water-goal-label");
+
+const addWaterBtn = document.getElementById("add-water-btn");
+const resetDiaryBtn = document.getElementById("reset-diary-btn");
+
+const diarySummary = document.getElementById("diary-summary");
+const generateDiarySummaryBtn = document.getElementById("generate-diary-summary-btn");
+
+const foodModal = document.getElementById("food-modal");
+const closeModalBtn = document.getElementById("close-modal-btn");
+const addBtns = document.querySelectorAll(".add-btn");
+const saveMealPackBtn = document.getElementById("save-meal-pack-btn");
+const commonFoodsList = document.getElementById("common-foods-list");
+const modalTotalKcal = document.getElementById("modal-total-kcal");
+const addCustomFoodBtn = document.getElementById("add-custom-food-btn");
+const customFoodName = document.getElementById("custom-food-name");
+const modalMealTitle = document.getElementById("modal-meal-title");
+
+const diaryHistoryDate = document.getElementById("diary-history-date");
+const diaryHistoryResult = document.getElementById("diary-history-result");
+
+const weightDateInput = document.getElementById("weight-date-input");
+const weightMassInput = document.getElementById("weight-mass-input");
+const saveWeightBtn = document.getElementById("save-weight-btn");
+const weightHistoryBucket = document.getElementById("weight-history-bucket");
+
+const saveSettingsBtn = document.getElementById("save-settings-btn");
+
+// BANCO LOCAL DE ALIMENTOS
+
+const foodDB = {
+  breakfast: [
+    { name: "Pão Francês", kcal: 140 },
+    { name: "Ovo", kcal: 90 },
+    { name: "Banana", kcal: 90 },
+    { name: "Café com leite", kcal: 80 },
+    { name: "Tapioca média", kcal: 150 }
+  ],
+  lunch: [
+    { name: "Arroz", kcal: 130 },
+    { name: "Feijão", kcal: 90 },
+    { name: "Frango", kcal: 180 },
+    { name: "Salada", kcal: 30 },
+    { name: "Carne bovina", kcal: 250 }
+  ],
+  dinner: [
+    { name: "Sopa", kcal: 150 },
+    { name: "Ovo", kcal: 90 },
+    { name: "Frango", kcal: 180 },
+    { name: "Salada", kcal: 30 },
+    { name: "Omelete", kcal: 170 }
+  ]
+};
+
+// HELPERS
+
+function safeText(el, text) {
+  if (el) el.textContent = text;
+}
+
+function getMealElement(meal) {
+  return document.getElementById(`meal-${meal}`);
+}
+
+function getMealCalories(meal) {
+  const el = getMealElement(meal);
+  return parseInt(el?.dataset?.kcal, 10) || 0;
+}
+
+function updateTotalCaloriesFromMeals() {
+  totalCalorias =
+    getMealCalories("breakfast") +
+    getMealCalories("lunch") +
+    getMealCalories("dinner");
+
+  updateCalories();
+}
+
+// NAVEGAÇÃO
+
+function hideAllViews() {
+  [viewChat, viewDiary, viewEvolucao, viewSettings].forEach(view => {
+    if (view) view.classList.add("hidden");
+  });
+
+  [navApoio, navDiario, navEvolucao].forEach(nav => {
+    if (!nav) return;
+    nav.classList.remove("text-purple-600");
+    nav.classList.add("text-gray-400");
+  });
+
+  if (settingsIcon) {
+    settingsIcon.className = "fa-solid fa-gear text-lg";
+  }
+}
+
+function activateNav(nav) {
+  if (!nav) return;
+  nav.classList.remove("text-gray-400");
+  nav.classList.add("text-purple-600");
+}
+
+function navigate(viewName) {
+  hideAllViews();
+
+  if (viewName === "apoio") {
+    if (viewChat) viewChat.classList.remove("hidden");
+
+    activateNav(navApoio);
+
+    safeText(headerTitle, "Sua Jornada");
+    safeText(headerSubtitle, "Estou aqui com você 💜");
+
+    lastView = "apoio";
+  }
+
+  if (viewName === "diario") {
+    if (viewDiary) viewDiary.classList.remove("hidden");
+
+    activateNav(navDiario);
+
+    safeText(headerTitle, "Diário Alimentar");
+    safeText(headerSubtitle, "Pequenos hábitos constroem mudanças 🌱");
+
+    renderDiaryHistory();
+
+    lastView = "diario";
+  }
+
+  if (viewName === "evolucao") {
+    if (viewEvolucao) viewEvolucao.classList.remove("hidden");
+
+    activateNav(navEvolucao);
+
+    safeText(headerTitle, "Evolução");
+    safeText(headerSubtitle, "Seu progresso ganhando forma 📈");
+
+    buildWeightChart();
+    buildWeightCaloriesChart();
+
+    lastView = "evolucao";
+  }
+
+  if (viewName === "settings") {
+    if (viewSettings) viewSettings.classList.remove("hidden");
+
+    safeText(headerTitle, "Ajustes");
+    safeText(headerSubtitle, "Seu espaço pessoal ✨");
+
+    if (settingsIcon) {
+      settingsIcon.className = "fa-solid fa-arrow-left text-lg";
+    }
+  }
+}
+
+if (navApoio) navApoio.onclick = () => navigate("apoio");
+if (navDiario) navDiario.onclick = () => navigate("diario");
+if (navEvolucao) navEvolucao.onclick = () => navigate("evolucao");
+
+if (openSettingsBtn) {
+  openSettingsBtn.onclick = () => {
+    if (viewSettings && viewSettings.classList.contains("hidden")) {
+      navigate("settings");
+    } else {
+      navigate(lastView);
+    }
+  };
+}
+
+// CHAT
+
+function addMessage(text, isUser = false) {
+  if (!chatBox || !typingIndicator) return;
+
+  const div = document.createElement("div");
+
+  div.className = isUser ? "user-bubble" : "ai-bubble";
+  div.textContent = text;
+
+  chatBox.insertBefore(div, typingIndicator);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+async function sendMessage() {
+  if (!userInput || !typingIndicator) return;
+
+  const text = userInput.value.trim();
+  if (!text) return;
+
+  addMessage(text, true);
+
+  userInput.value = "";
+  typingIndicator.classList.remove("hidden");
+
+  try {
+    const response = await fetch(CHAT_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: text,
+        mood: localStorage.getItem("lumaMood") || "",
+        totalCalorias,
+        totalAgua
+      })
+    });
+
+    const data = await response.json();
+
+    typingIndicator.classList.add("hidden");
+    addMessage(data.reply || "A Luma respondeu 🌙");
+  } catch (error) {
+    console.error("Erro no chat:", error);
+
+    typingIndicator.classList.add("hidden");
+    addMessage("Erro ao conectar com a Luma 🌙");
+  }
+}
+
+if (sendBtn) sendBtn.onclick = sendMessage;
+
+if (userInput) {
+  userInput.onkeydown = event => {
+    if (event.key === "Enter") {
+      sendMessage();
+    }
+  };
+}
+
+// HUMOR
+
+document.querySelectorAll(".mood-btn").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll(".mood-btn").forEach(b => {
+      b.classList.remove("active");
+    });
+
+    btn.classList.add("active");
+    localStorage.setItem("lumaMood", btn.dataset.mood || "");
+  };
+});
+
+// ÁGUA E CALORIAS
+
+function updateWater() {
+  safeText(waterCount, `${totalAgua} ml`);
+  localStorage.setItem("luma_total_agua", totalAgua);
+}
+
+function updateCalories() {
+  safeText(calConsumed, totalCalorias);
+  localStorage.setItem("luma_total_calorias", totalCalorias);
+}
+
+if (addWaterBtn) {
+  addWaterBtn.onclick = () => {
+    totalAgua += 250;
+
+    updateWater();
+    saveDiaryToday();
+    renderDiaryHistory();
+  };
+}
+
+if (resetDiaryBtn) {
+  resetDiaryBtn.onclick = () => {
+    totalCalorias = 0;
+    totalAgua = 0;
+
+    ["breakfast", "lunch", "dinner"].forEach(meal => {
+      const el = getMealElement(meal);
+      if (!el) return;
+
+      el.textContent = "Nenhum alimento";
+      el.dataset.kcal = "0";
+      el.classList.remove("text-gray-700");
+      el.classList.add("text-gray-400");
+    });
+
+    updateCalories();
+    updateWater();
+    saveDiaryToday();
+    renderDiaryHistory();
+
+    if (diarySummary) {
+      diarySummary.textContent =
+        "Registre suas refeições e eu te ajudo a entender seu dia. 🌙";
+    }
+
+    alert("Diário resetado 🌙");
+  };
+}
+
+// IA CALORIAS
+
+async function estimateCalories(alimento) {
+  try {
+    const response = await fetch(CALORIA_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ alimento })
+    });
+
+    const data = await response.json();
+
+    return parseInt(data.kcal, 10) || 0;
+  } catch (error) {
+    console.error("Erro ao estimar kcal:", error);
+    return 0;
+  }
+}
+
+// MODAL DE ALIMENTOS
+
+function renderFoodList(mealType) {
+  if (!commonFoodsList) return;
+
+  commonFoodsList.innerHTML = "";
+
+  const foods = foodDB[mealType] || [];
+
+  foods.forEach(food => {
+    const label = document.createElement("label");
+
+    label.className =
+      "flex justify-between items-center p-3 bg-slate-50 rounded-xl cursor-pointer font-semibold text-gray-700";
+
+    label.innerHTML = `
+      <div class="flex items-center gap-3">
+        <input
+          type="checkbox"
+          class="food-check w-4 h-4 accent-purple-600"
+          data-food="${food.name}"
+          data-kcal="${food.kcal}"
+        >
+        <span>
+          ${food.name}
+          <small class="text-gray-400 block text-[10px]">${food.kcal} kcal</small>
+        </span>
       </div>
+    `;
 
-      <button id="open-settings-btn" class="w-9 h-9 rounded-full bg-white/20 flex justify-center items-center text-white/90">
-        <i id="settings-icon" class="fa-solid fa-gear text-lg"></i>
-      </button>
-    </header>
+    const checkbox = label.querySelector(".food-check");
 
-    <main class="flex-1 relative overflow-hidden bg-slate-50">
+    if (checkbox) {
+      checkbox.onchange = calculateModalTotal;
+    }
 
-      <section id="view-chat" class="absolute inset-0 flex flex-col">
+    commonFoodsList.appendChild(label);
+  });
 
-        <div class="bg-white px-4 py-2 border-b border-slate-100 flex items-center justify-between shrink-0 shadow-sm">
-          <span class="text-[10px] font-black text-slate-400 uppercase">Como está a mente?</span>
+  calculateModalTotal();
+}
 
-          <div class="flex gap-1.5">
-            <button class="mood-btn" data-mood="Feliz">😊</button>
-            <button class="mood-btn" data-mood="Ansioso">😰</button>
-            <button class="mood-btn" data-mood="Cansado">😴</button>
-            <button class="mood-btn" data-mood="Estressado">🤯</button>
-          </div>
-        </div>
+function calculateModalTotal() {
+  let total = 0;
 
-        <div id="chat-box" class="flex-1 overflow-y-auto p-4 space-y-4 pb-36">
-          <div class="bg-white p-3 rounded-2xl shadow text-sm text-gray-700 w-[85%] border border-gray-100">
-            Olá 💜 Eu sou a Luma. Estou aqui para acompanhar sua jornada.
-          </div>
+  document.querySelectorAll(".food-check").forEach(cb => {
+    if (cb.checked) {
+      total += parseInt(cb.dataset.kcal, 10) || 0;
+    }
+  });
 
-          <div id="typing-indicator" class="hidden bg-gray-200 py-2 px-4 w-fit rounded-2xl text-gray-500 text-xs">
-            Luma digitando...
-          </div>
-        </div>
+  safeText(modalTotalKcal, total);
+}
 
-        <div class="absolute bottom-20 left-3 right-3 flex items-center bg-white rounded-full shadow-lg border border-gray-100 px-3 py-2 z-10 gap-2">
-          <input id="user-input" type="text" placeholder="Converse com a Luma..." class="flex-1 bg-transparent outline-none text-gray-700 text-sm" />
+addBtns.forEach(btn => {
+  btn.onclick = () => {
+    currentMealTarget = btn.dataset.mealType;
 
-          <button id="send-btn" class="bg-purple-600 text-white w-9 h-9 rounded-full flex justify-center items-center">
-            <i class="fa-solid fa-paper-plane text-xs"></i>
-          </button>
-        </div>
-      </section>
+    const titles = {
+      breakfast: "Café da Manhã",
+      lunch: "Almoço",
+      dinner: "Jantar"
+    };
 
-      <section id="view-diary" class="absolute inset-0 p-5 overflow-y-auto pb-24 hidden">
+    safeText(modalMealTitle, titles[currentMealTarget] || "Monte seu Prato");
 
-        <div class="bg-white p-4 rounded-2xl shadow mb-4 flex justify-between items-center">
-          <div class="text-center flex-1 border-r border-gray-100">
-            <span class="text-xs text-gray-400 block uppercase font-semibold">Consumido</span>
-            <span id="cal-consumed" class="text-2xl font-black text-purple-600">0</span>
-            <span class="text-[10px] text-gray-400">kcal</span>
-          </div>
+    if (customFoodName) customFoodName.value = "";
 
-          <div class="text-center flex-1">
-            <span class="text-xs text-gray-400 block uppercase font-semibold">Água</span>
-            <span id="water-count" class="text-lg font-bold text-blue-500 block">0 ml</span>
-            <span id="water-goal-label" class="text-[10px] text-gray-400">meta não definida</span>
-          </div>
-        </div>
+    renderFoodList(currentMealTarget);
 
-        <div class="bg-white p-4 rounded-2xl shadow mb-4 border border-slate-100">
-          <div class="flex justify-between items-center mb-2">
-            <h3 class="text-xs font-black text-purple-600 uppercase">
-              <i class="fa-solid fa-brain mr-1"></i>
-              Resumo da Luma
-            </h3>
+    if (foodModal) foodModal.classList.remove("hidden");
+  };
+});
 
-            <button id="generate-diary-summary-btn" class="text-[10px] bg-purple-50 text-purple-600 font-bold px-3 py-1.5 rounded-full">
-              Gerar resumo
-            </button>
-          </div>
+if (closeModalBtn) {
+  closeModalBtn.onclick = () => {
+    if (foodModal) foodModal.classList.add("hidden");
+  };
+}
 
-          <p id="diary-summary" class="text-xs text-gray-500 leading-relaxed">
-            Registre suas refeições e eu te ajudo a entender seu dia. 🌙
-          </p>
-        </div>
+if (addCustomFoodBtn) {
+  addCustomFoodBtn.onclick = async () => {
+    if (!customFoodName || !commonFoodsList) return;
 
-        <div class="space-y-4">
+    const alimento = customFoodName.value.trim();
 
-          <div class="meal-card">
-            <div class="meal-icon bg-amber-100 text-amber-600">
-              <i class="fa-solid fa-mug-saucer"></i>
-            </div>
+    if (!alimento) {
+      alert("Digite um alimento primeiro.");
+      return;
+    }
 
-            <div class="flex-1">
-              <h3>Café da Manhã</h3>
-              <p id="meal-breakfast" data-kcal="0">Nenhum alimento</p>
-            </div>
+    addCustomFoodBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+    addCustomFoodBtn.disabled = true;
 
-            <button class="add-btn" data-meal-type="breakfast">
-              <i class="fa-solid fa-plus"></i>
-            </button>
-          </div>
+    const kcal = await estimateCalories(alimento);
 
-          <div class="meal-card">
-            <div class="meal-icon bg-emerald-100 text-emerald-600">
-              <i class="fa-solid fa-utensils"></i>
-            </div>
+    const newItem = document.createElement("label");
 
-            <div class="flex-1">
-              <h3>Almoço</h3>
-              <p id="meal-lunch" data-kcal="0">Nenhum alimento</p>
-            </div>
+    newItem.className =
+      "flex justify-between items-center p-3 bg-purple-100 border border-purple-200 rounded-xl cursor-pointer font-semibold text-purple-800 mb-2 shadow-sm";
 
-            <button class="add-btn" data-meal-type="lunch">
-              <i class="fa-solid fa-plus"></i>
-            </button>
-          </div>
-
-          <div class="meal-card">
-            <div class="meal-icon bg-indigo-100 text-indigo-600">
-              <i class="fa-solid fa-bowl-food"></i>
-            </div>
-
-            <div class="flex-1">
-              <h3>Jantar</h3>
-              <p id="meal-dinner" data-kcal="0">Nenhum alimento</p>
-            </div>
-
-            <button class="add-btn" data-meal-type="dinner">
-              <i class="fa-solid fa-plus"></i>
-            </button>
-          </div>
-
-          <button id="add-water-btn" class="w-full bg-blue-50 text-blue-600 font-bold text-xs py-3 rounded-2xl flex justify-center items-center gap-2">
-            <i class="fa-solid fa-glass-water"></i>
-            ADD 250ML DE ÁGUA
-          </button>
-
-          <button id="reset-diary-btn" class="w-full bg-red-50 text-red-500 font-bold text-xs py-3 rounded-2xl flex justify-center items-center gap-2">
-            <i class="fa-solid fa-rotate-left"></i>
-            LIMPAR DIÁRIO DE HOJE
-          </button>
-
-          <div class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 space-y-3">
-            <h3 class="text-xs font-black text-purple-600 uppercase">
-              <i class="fa-solid fa-calendar-days mr-1"></i>
-              Histórico do Diário
-            </h3>
-
-            <input id="diary-history-date" type="date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold outline-none text-gray-700" />
-
-            <div id="diary-history-result" class="space-y-2">
-              <p class="text-[10px] text-gray-400 italic text-center py-2">
-                Selecione uma data para ver o que foi registrado.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="view-evolucao" class="absolute inset-0 p-5 overflow-y-auto pb-24 hidden space-y-5">
-
-        <div class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 space-y-3">
-          <h3 class="text-xs font-black text-purple-600 uppercase">
-            <i class="fa-solid fa-weight-scale mr-1"></i>
-            Controle de Peso
-          </h3>
-
-          <div class="flex gap-2 items-end bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
-            <div class="flex-1">
-              <label class="text-[9px] font-bold text-gray-400 uppercase">Data</label>
-              <input id="weight-date-input" type="date" class="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-semibold mt-0.5 outline-none" />
-            </div>
-
-            <div class="w-24">
-              <label class="text-[9px] font-bold text-gray-400 uppercase">Peso kg</label>
-              <input id="weight-mass-input" type="number" step="0.1" placeholder="00.0" class="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-semibold mt-0.5 outline-none" />
-            </div>
-
-            <button id="save-weight-btn" class="bg-purple-600 text-white font-bold text-[10px] px-3 py-2.5 rounded-xl uppercase">
-              Salvar
-            </button>
-          </div>
-
-          <div id="chart-container-wrapper" class="bg-slate-50 p-2 rounded-2xl border border-slate-100 h-40">
-            <canvas id="weightChart"></canvas>
-          </div>
-
-          <div>
-            <span class="text-[9px] font-bold text-purple-400 uppercase block mb-1.5">Sua evolução de peso:</span>
-            <div id="weight-history-bucket" class="space-y-1.5 max-h-24 overflow-y-auto pr-0.5"></div>
-          </div>
-        </div>
-
-        <div class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 space-y-3">
-          <h3 class="text-xs font-black text-purple-600 uppercase">
-            <i class="fa-solid fa-wave-square mr-1"></i>
-            Peso X Calorias
-          </h3>
-
-          <p class="text-[10px] text-gray-400">
-            Compare peso registrado com calorias consumidas nos dias salvos.
-          </p>
-
-          <div id="combo-chart-container-wrapper" class="bg-slate-50 p-2 rounded-2xl border border-slate-100 h-48">
-            <canvas id="weightCaloriesChart"></canvas>
-          </div>
-        </div>
-      </section>
-
-      <section id="view-settings" class="absolute inset-0 p-5 overflow-y-auto pb-24 hidden bg-slate-50">
-
-        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3 mb-4">
-          <h3 class="text-xs font-black text-purple-600 uppercase">
-            <i class="fa-solid fa-user-gear mr-1"></i>
-            Perfil Clínico
-          </h3>
-
-          <input id="cfg-user-name" type="text" placeholder="Seu nome" class="input-field" />
-          <input id="cfg-birth-date" type="date" class="input-field" />
-          <input id="cfg-height" type="number" placeholder="Altura em cm. Ex: 178" class="input-field" />
-          <input id="cfg-current-weight" type="number" step="0.1" placeholder="Peso atual. Ex: 96.5" class="input-field" />
-          <input id="cfg-goal-weight" type="number" step="0.1" placeholder="Meta de peso. Ex: 80" class="input-field" />
-
-          <div class="grid grid-cols-2 gap-2 pt-2">
-            <div class="bg-purple-50 rounded-xl p-3 text-center">
-              <span class="text-[9px] uppercase text-purple-400 font-black block">IMC</span>
-              <span id="cfg-imc-result" class="text-lg font-black text-purple-700">--</span>
-            </div>
-
-            <div class="bg-blue-50 rounded-xl p-3 text-center">
-              <span class="text-[9px] uppercase text-blue-400 font-black block">Água</span>
-              <span id="cfg-water-result" class="text-lg font-black text-blue-600">--</span>
-            </div>
-          </div>
-
-          <button id="save-settings-btn" class="w-full bg-purple-600 text-white font-bold text-xs py-3.5 rounded-xl uppercase mt-4">
-            Salvar Preferências
-          </button>
-        </div>
-      </section>
-
-      <div id="food-modal" class="absolute inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-end z-40 hidden">
-        <div class="bg-white w-full rounded-t-[30px] p-5 shadow-2xl flex flex-col h-[85%]">
-
-          <div class="flex justify-between items-center mb-3">
-            <h3 id="modal-meal-title" class="font-black text-gray-800 text-base">Monte seu Prato</h3>
-            <button id="close-modal-btn" class="text-gray-400 p-2">
-              <i class="fa-solid fa-xmark text-lg"></i>
-            </button>
-          </div>
-
-          <div class="bg-purple-50 p-3 rounded-xl mb-3 border border-purple-100 shrink-0">
-            <h4 class="text-[10px] font-bold text-purple-600 uppercase mb-2">
-              <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>
-              Adicionar com IA
-            </h4>
-
-            <div class="flex gap-2">
-              <input id="custom-food-name" type="text" placeholder="Ex: arroz, feijão e frango" class="flex-1 p-2 rounded-lg text-xs border border-purple-200 outline-none text-gray-700" />
-              <button id="add-custom-food-btn" class="bg-purple-600 text-white px-3 rounded-lg text-xs font-bold shadow active:scale-95">
-                +
-              </button>
-            </div>
-          </div>
-
-          <h4 class="text-[10px] font-bold text-gray-400 uppercase mb-2 shrink-0">Opções Comuns</h4>
-
-          <div id="common-foods-list" class="flex-1 overflow-y-auto space-y-2 text-sm pb-2"></div>
-
-          <div class="pt-3 border-t border-gray-100 mt-2 shrink-0">
-            <div class="flex justify-between text-xs font-bold text-gray-500 uppercase px-1 mb-2">
-              <span>Selecionados</span>
-              <span class="text-purple-600"><span id="modal-total-kcal">0</span> kcal</span>
-            </div>
-
-            <button id="save-meal-pack-btn" class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-xs py-3 rounded-xl uppercase shadow-md active:scale-95">
-              Atualizar Refeição
-            </button>
-          </div>
-        </div>
+    newItem.innerHTML = `
+      <div class="flex items-center gap-3">
+        <input
+          type="checkbox"
+          checked
+          class="food-check w-4 h-4 accent-purple-600"
+          data-food="${alimento}"
+          data-kcal="${kcal}"
+        >
+        <span>
+          ${alimento}
+          <small class="text-purple-500 block text-[10px]">
+            ${kcal} kcal estimadas pela Luma IA ✨
+          </small>
+        </span>
       </div>
+    `;
 
-    </main>
+    const checkbox = newItem.querySelector(".food-check");
 
-    <nav class="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-100 h-16 flex justify-around items-center px-4 pb-2 z-30 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
-      <button id="nav-apoio" class="nav-item flex flex-col items-center text-purple-600 text-[10px] font-bold">
-        <i class="fa-solid fa-heart text-lg"></i>
-        <span>Apoio</span>
-      </button>
+    if (checkbox) {
+      checkbox.onchange = calculateModalTotal;
+    }
 
-      <button id="nav-diario" class="nav-item flex flex-col items-center text-gray-400 text-[10px] font-bold">
-        <i class="fa-solid fa-book-open text-lg"></i>
-        <span>Diário</span>
-      </button>
+    commonFoodsList.prepend(newItem);
 
-      <button id="nav-evolucao" class="nav-item flex flex-col items-center text-gray-400 text-[10px] font-bold">
-        <i class="fa-solid fa-chart-line text-lg"></i>
-        <span>Evolução</span>
-      </button>
-    </nav>
+    customFoodName.value = "";
 
-  </div>
+    calculateModalTotal();
 
-  <script src="script.js"></script>
-</body>
-</html>
+    addCustomFoodBtn.innerHTML = `<i class="fa-solid fa-plus"></i>`;
+    addCustomFoodBtn.disabled = false;
+  };
+}
+
+if (saveMealPackBtn) {
+  saveMealPackBtn.onclick = () => {
+    let selected = [];
+    let kcalTotal = 0;
+
+    document.querySelectorAll(".food-check").forEach(cb => {
+      if (cb.checked) {
+        selected.push(cb.dataset.food);
+        kcalTotal += parseInt(cb.dataset.kcal, 10) || 0;
+      }
+    });
+
+    const target = getMealElement(currentMealTarget);
+
+    if (!target) return;
+
+    if (selected.length > 0) {
+      target.textContent = selected.join(", ");
+      target.classList.remove("text-gray-400");
+      target.classList.add("text-gray-700");
+    } else {
+      target.textContent = "Nenhum alimento";
+      target.classList.remove("text-gray-700");
+      target.classList.add("text-gray-400");
+    }
+
+    target.dataset.kcal = kcalTotal;
+
+    updateTotalCaloriesFromMeals();
+
+    saveDiaryToday();
+    renderDiaryHistory();
+    buildWeightCaloriesChart();
+
+    if (foodModal) foodModal.classList.add("hidden");
+  };
+}
+
+// HISTÓRICO DO DIÁRIO
+
+function saveDiaryToday() {
+  const history = JSON.parse(localStorage.getItem("lumaDiaryHistory") || "[]");
+
+  const data = {
+    date: todayISO,
+    breakfast: getMealElement("breakfast")?.textContent || "Nenhum alimento",
+    lunch: getMealElement("lunch")?.textContent || "Nenhum alimento",
+    dinner: getMealElement("dinner")?.textContent || "Nenhum alimento",
+    calories: totalCalorias,
+    water: totalAgua
+  };
+
+  const filtered = history.filter(item => item.date !== todayISO);
+
+  filtered.push(data);
+
+  localStorage.setItem("lumaDiaryHistory", JSON.stringify(filtered));
+}
+
+function renderDiaryHistory() {
+  if (!diaryHistoryDate || !diaryHistoryResult) return;
+
+  if (!diaryHistoryDate.value) {
+    diaryHistoryDate.value = todayISO;
+  }
+
+  const selected = diaryHistoryDate.value;
+  const history = JSON.parse(localStorage.getItem("lumaDiaryHistory") || "[]");
+  const found = history.find(item => item.date === selected);
+
+  if (!found) {
+    diaryHistoryResult.innerHTML = `
+      <p class="text-xs text-gray-400 text-center">
+        Nenhum registro encontrado.
+      </p>
+    `;
+    return;
+  }
+
+  diaryHistoryResult.innerHTML = `
+    <div class="bg-slate-50 rounded-2xl p-3 text-xs text-gray-700 space-y-2 border border-slate-100">
+      <p><strong>Café:</strong> ${found.breakfast}</p>
+      <p><strong>Almoço:</strong> ${found.lunch}</p>
+      <p><strong>Jantar:</strong> ${found.dinner}</p>
+      <p><strong>Calorias:</strong> ${found.calories} kcal</p>
+      <p><strong>Água:</strong> ${found.water} ml</p>
+    </div>
+  `;
+}
+
+if (diaryHistoryDate) {
+  diaryHistoryDate.onchange = renderDiaryHistory;
+}
+
+// RESUMO IA DO DIÁRIO
+
+if (generateDiarySummaryBtn) {
+  generateDiarySummaryBtn.onclick = async () => {
+    if (!diarySummary) return;
+
+    generateDiarySummaryBtn.textContent = "Gerando...";
+
+    const breakfast = getMealElement("breakfast")?.textContent || "Nenhum alimento";
+    const lunch = getMealElement("lunch")?.textContent || "Nenhum alimento";
+    const dinner = getMealElement("dinner")?.textContent || "Nenhum alimento";
+
+    const prompt = `
+Faça um resumo alimentar curto e acolhedor com base nos dados:
+
+Café da manhã: ${breakfast}
+Almoço: ${lunch}
+Jantar: ${dinner}
+Água: ${totalAgua} ml
+Calorias: ${totalCalorias} kcal
+
+Dê uma orientação simples e motivadora.
+`;
+
+    try {
+      const response = await fetch(CHAT_API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          message: prompt,
+          totalCalorias,
+          totalAgua
+        })
+      });
+
+      const data = await response.json();
+
+      diarySummary.textContent = data.reply || "Resumo gerado pela Luma 🌙";
+    } catch (error) {
+      console.error("Erro resumo:", error);
+      diarySummary.textContent = "Não consegui gerar o resumo agora 🌙";
+    }
+
+    generateDiarySummaryBtn.textContent = "Gerar resumo";
+  };
+}
+
+// PESO E GRÁFICOS
+
+if (weightDateInput) {
+  weightDateInput.value = todayISO;
+}
+
+if (saveWeightBtn) {
+  saveWeightBtn.onclick = () => {
+    const rawDate = weightDateInput?.value;
+    const rawWeight = parseFloat(weightMassInput?.value);
+
+    if (!rawDate || isNaN(rawWeight)) {
+      alert("Digite data e peso.");
+      return;
+    }
+
+    let history = JSON.parse(localStorage.getItem("lumaWeightHistory") || "[]");
+
+    history = history.filter(item => item.date !== rawDate);
+
+    history.push({
+      date: rawDate,
+      weight: rawWeight,
+      calories: totalCalorias
+    });
+
+    history.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    localStorage.setItem("lumaWeightHistory", JSON.stringify(history));
+
+    if (weightMassInput) weightMassInput.value = "";
+
+    renderWeightHistory();
+    buildWeightChart();
+    buildWeightCaloriesChart();
+  };
+}
+
+function renderWeightHistory() {
+  if (!weightHistoryBucket) return;
+
+  const history = JSON.parse(localStorage.getItem("lumaWeightHistory") || "[]");
+
+  if (history.length === 0) {
+    weightHistoryBucket.innerHTML = `
+      <p class="text-[10px] text-gray-400 italic text-center py-1">
+        Nenhum peso registrado.
+      </p>
+    `;
+    return;
+  }
+
+  weightHistoryBucket.innerHTML = [...history]
+    .reverse()
+    .map(
+      item => `
+        <div class="flex justify-between items-center bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-[11px] font-semibold text-slate-600">
+          <span class="text-purple-600">${item.date}</span>
+          <span class="font-black text-slate-800">${item.weight} kg</span>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function buildWeightChart() {
+  const canvas = document.getElementById("weightChart");
+
+  if (!canvas || typeof Chart === "undefined") return;
+
+  const ctx = canvas.getContext("2d");
+  const history = JSON.parse(localStorage.getItem("lumaWeightHistory") || "[]");
+
+  if (weightChartInstance) {
+    weightChartInstance.destroy();
+  }
+
+  weightChartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: history.map(h => h.date),
+      datasets: [
+        {
+          label: "Peso",
+          data: history.map(h => h.weight),
+          borderColor: "#9333ea",
+          backgroundColor: "rgba(147,51,234,.1)",
+          borderWidth: 3,
+          tension: 0.3,
+          fill: true
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+}
+
+function buildWeightCaloriesChart() {
+  const canvas = document.getElementById("weightCaloriesChart");
+
+  if (!canvas || typeof Chart === "undefined") return;
+
+  const ctx = canvas.getContext("2d");
+  const history = JSON.parse(localStorage.getItem("lumaWeightHistory") || "[]");
+
+  if (comboChartInstance) {
+    comboChartInstance.destroy();
+  }
+
+  comboChartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: history.map(h => h.date),
+      datasets: [
+        {
+          label: "Peso",
+          data: history.map(h => h.weight),
+          borderColor: "#9333ea",
+          borderWidth: 3,
+          tension: 0.3,
+          yAxisID: "peso"
+        },
+        {
+          label: "Calorias",
+          data: history.map(h => h.calories),
+          borderColor: "#f59e0b",
+          borderWidth: 3,
+          tension: 0.3,
+          yAxisID: "kcal"
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        peso: {
+          type: "linear",
+          position: "left"
+        },
+        kcal: {
+          type: "linear",
+          position: "right",
+          grid: {
+            drawOnChartArea: false
+          }
+        }
+      }
+    }
+  });
+}
+
+// AJUSTES
+
+if (saveSettingsBtn) {
+  saveSettingsBtn.onclick = () => {
+    const name = document.getElementById("cfg-user-name")?.value || "";
+    const birth = document.getElementById("cfg-birth-date")?.value || "";
+    const height = parseFloat(document.getElementById("cfg-height")?.value);
+    const weight = parseFloat(document.getElementById("cfg-current-weight")?.value);
+    const goal = parseFloat(document.getElementById("cfg-goal-weight")?.value);
+
+    if (!height || !weight) {
+      alert("Preencha altura e peso para calcular IMC e água.");
+      return;
+    }
+
+    const imc = (weight / ((height / 100) * (height / 100))).toFixed(1);
+    const water = Math.round(weight * 35);
+
+    safeText(document.getElementById("cfg-imc-result"), imc);
+    safeText(document.getElementById("cfg-water-result"), `${water}ml`);
+    safeText(waterGoalLabel, `meta ${water}ml`);
+
+    localStorage.setItem(
+      "lumaProfile",
+      JSON.stringify({
+        name,
+        birth,
+        height,
+        weight,
+        goal,
+        imc,
+        water
+      })
+    );
+
+    alert("Preferências salvas ✨");
+  };
+}
+
+// INICIALIZAÇÃO
+
+updateTotalCaloriesFromMeals();
+updateCalories();
+updateWater();
+renderWeightHistory();
+renderDiaryHistory();
+navigate("apoio");
+
+console.log("🌙 Luma completa online - script.js correto");
