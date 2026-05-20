@@ -1,721 +1,273 @@
-// ===============================
-// 🌙 LUMA APP - SCRIPT COMPLETO
-// CHAT + CALORIAS + HISTÓRICO
-// ===============================
+/* =========================
+   LUMA APP - SCRIPT COMPLETO
+   Frontend conectado ao Render
+========================= */
 
-// -------------------------------
-// API ONLINE RENDER
-// -------------------------------
+const API_BASE = "https://luma-api-m5vh.onrender.com";
+const CHAT_API = `${API_BASE}/api/chat`;
+const CALORIA_API = `${API_BASE}/api/estimar-caloria`;
 
-const CHAT_API =
-  "https://luma-api-m5vh.onrender.com/api/chat";
+let lastView = "apoio";
+let totalCalorias = Number(localStorage.getItem("luma_total_calorias")) || 0;
+let totalAgua = Number(localStorage.getItem("luma_total_agua")) || 0;
 
-const CALORIA_API =
-  "https://luma-api-m5vh.onrender.com/api/estimar-caloria";
+const navApoio = document.getElementById("nav-apoio");
+const navDiario = document.getElementById("nav-diario");
+const navEvolucao = document.getElementById("nav-evolucao");
 
-// -------------------------------
-// ESTADO APP
-// -------------------------------
+const viewChat = document.getElementById("view-chat");
+const viewDiary = document.getElementById("view-diary");
+const viewEvolucao = document.getElementById("view-evolucao");
+const viewSettings = document.getElementById("view-settings");
 
-let totalCalorias = 0;
-let totalAgua = 1000;
+const openSettingsBtn = document.getElementById("open-settings-btn");
+const settingsIcon = document.getElementById("settings-icon");
+const headerTitle = document.getElementById("header-title");
+const headerSubtitle = document.getElementById("header-subtitle");
 
-let historicoPeso =
-  JSON.parse(
-    localStorage.getItem(
-      "historicoPeso"
-    )
-  ) || [];
+const sendBtn = document.getElementById("send-btn");
+const userInput = document.getElementById("user-input");
+const chatBox = document.getElementById("chat-box");
+const typingIndicator = document.getElementById("typing-indicator");
 
-let historicoDiario =
-  JSON.parse(
-    localStorage.getItem(
-      "historicoDiario"
-    )
-  ) || [];
+const calConsumed = document.getElementById("cal-consumed");
+const waterCount = document.getElementById("water-count");
 
-// -------------------------------
-// ELEMENTOS
-// -------------------------------
+/* =========================
+   NAVEGAÇÃO
+========================= */
 
-const caloriasEl =
-  document.getElementById(
-    "total-calorias"
-  );
+function hideAllViews() {
+  [viewChat, viewDiary, viewEvolucao, viewSettings].forEach(view => {
+    if (view) view.classList.add("hidden");
+  });
 
-const aguaEl =
-  document.getElementById(
-    "total-agua"
-  );
+  [navApoio, navDiario, navEvolucao].forEach(nav => {
+    if (!nav) return;
+    nav.classList.remove("text-purple-600");
+    nav.classList.add("text-gray-400");
+  });
+}
 
-const cafeTexto =
-  document.getElementById(
-    "cafe-texto"
-  );
+function setActiveNav(nav) {
+  if (!nav) return;
+  nav.classList.remove("text-gray-400");
+  nav.classList.add("text-purple-600");
+}
 
-const almocoTexto =
-  document.getElementById(
-    "almoco-texto"
-  );
+function navigate(viewName) {
+  hideAllViews();
 
-const jantarTexto =
-  document.getElementById(
-    "jantar-texto"
-  );
+  if (settingsIcon) {
+    settingsIcon.className = "fa-solid fa-gear text-lg";
+  }
 
-const calendarInput =
-  document.getElementById(
-    "calendar-input"
-  );
+  if (viewName === "apoio") {
+    if (viewChat) viewChat.classList.remove("hidden");
+    setActiveNav(navApoio);
+    if (headerTitle) headerTitle.textContent = "Sua Jornada";
+    if (headerSubtitle) headerSubtitle.textContent = "Estou aqui com você 💜";
+    lastView = "apoio";
+  }
 
-const pesoAtualEl =
-  document.getElementById(
-    "peso-atual"
-  );
+  if (viewName === "diario") {
+    if (viewDiary) viewDiary.classList.remove("hidden");
+    setActiveNav(navDiario);
+    if (headerTitle) headerTitle.textContent = "Diário Alimentar";
+    if (headerSubtitle) headerSubtitle.textContent = "Um passo leve por vez 🥗";
+    lastView = "diario";
+    atualizarInterface();
+  }
 
-const caloriasGraficoEl =
-  document.getElementById(
-    "calorias-grafico"
-  );
+  if (viewName === "evolucao") {
+    if (viewEvolucao) viewEvolucao.classList.remove("hidden");
+    setActiveNav(navEvolucao);
+    if (headerTitle) headerTitle.textContent = "Evolução";
+    if (headerSubtitle) headerSubtitle.textContent = "Seu progresso ganhando forma 📊";
+    lastView = "evolucao";
+  }
 
-const graficoCanvas =
-  document.getElementById(
-    "grafico"
-  );
+  if (viewName === "settings") {
+    if (viewSettings) viewSettings.classList.remove("hidden");
+    if (headerTitle) headerTitle.textContent = "Ajustes";
+    if (headerSubtitle) headerSubtitle.textContent = "Configurações da Luma ✨";
+    if (settingsIcon) settingsIcon.className = "fa-solid fa-arrow-left text-lg";
+  }
+}
 
-const sendBtn =
-  document.getElementById(
-    "send-btn"
-  );
+if (navApoio) navApoio.addEventListener("click", () => navigate("apoio"));
+if (navDiario) navDiario.addEventListener("click", () => navigate("diario"));
+if (navEvolucao) navEvolucao.addEventListener("click", () => navigate("evolucao"));
 
-const userInput =
-  document.getElementById(
-    "user-input"
-  );
+if (openSettingsBtn) {
+  openSettingsBtn.addEventListener("click", () => {
+    if (viewSettings && viewSettings.classList.contains("hidden")) {
+      navigate("settings");
+    } else {
+      navigate(lastView);
+    }
+  });
+}
 
-const chatBox =
-  document.getElementById(
-    "chat-box"
-  );
+/* =========================
+   CHAT COM IA
+========================= */
 
-const typingIndicator =
-  document.getElementById(
-    "typing-indicator"
-  );
+function addMessage(text, isUser = false) {
+  if (!chatBox || !typingIndicator) return;
 
-// -------------------------------
-// INICIALIZAÇÃO
-// -------------------------------
-
-window.onload = () => {
-
-  atualizarInterface();
-
-  carregarGrafico();
-
-};
-
-// -------------------------------
-// CHAT IA
-// -------------------------------
-
-function addMessage(
-  text,
-  isUser = false
-) {
-
-  if (!chatBox) return;
-
-  const div =
-    document.createElement("div");
+  const div = document.createElement("div");
 
   div.className = `
     p-3 rounded-2xl shadow text-sm w-[85%] border
-    ${
-      isUser
-        ? "bg-purple-600 text-white self-end ml-auto"
-        : "bg-white text-gray-700 border-gray-100"
+    ${isUser
+      ? "bg-purple-600 text-white self-end ml-auto"
+      : "bg-white text-gray-700 border-gray-100"
     }
   `;
 
   div.textContent = text;
-
-  chatBox.insertBefore(
-    div,
-    typingIndicator
-  );
-
-  chatBox.scrollTop =
-    chatBox.scrollHeight;
-
+  chatBox.insertBefore(div, typingIndicator);
+  chatBox.scrollTop = chatBox.scrollHeight;
 }
 
 async function sendMessage() {
+  if (!userInput) return;
 
-  const text =
-    userInput.value.trim();
-
+  const text = userInput.value.trim();
   if (!text) return;
 
   addMessage(text, true);
-
   userInput.value = "";
 
-  typingIndicator.classList.remove(
-    "hidden"
-  );
+  if (typingIndicator) typingIndicator.classList.remove("hidden");
 
   try {
+    const response = await fetch(CHAT_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message: text,
+        mood: localStorage.getItem("lumaMood") || "",
+        totalCalorias,
+        totalAgua
+      })
+    });
 
-    const response = await fetch(
-      CHAT_API,
-      {
+    const data = await response.json();
 
-        method: "POST",
+    if (typingIndicator) typingIndicator.classList.add("hidden");
 
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
+    addMessage(data.reply || "A Luma respondeu, mas sem texto 🌙");
+  } catch (error) {
+    console.error(error);
 
-        body: JSON.stringify({
-          message: text,
-          mood:
-            localStorage.getItem(
-              "lumaMood"
-            ) || ""
-        })
+    if (typingIndicator) typingIndicator.classList.add("hidden");
 
-      }
-    );
-
-    const data =
-      await response.json();
-
-    typingIndicator.classList.add(
-      "hidden"
-    );
-
-    addMessage(
-      data.reply ||
-        "A Luma respondeu 🌙"
-    );
-
-  } catch (erro) {
-
-    console.log(erro);
-
-    typingIndicator.classList.add(
-      "hidden"
-    );
-
-    addMessage(
-      "Erro ao conectar com a Luma 🌙"
-    );
-
+    addMessage("Erro ao conectar com a Luma. Tente novamente em instantes 🌙");
   }
-
 }
 
-if (sendBtn) {
-
-  sendBtn.addEventListener(
-    "click",
-    sendMessage
-  );
-
-}
+if (sendBtn) sendBtn.addEventListener("click", sendMessage);
 
 if (userInput) {
-
-  userInput.addEventListener(
-    "keydown",
-    e => {
-
-      if (e.key === "Enter") {
-        sendMessage();
-      }
-
-    }
-  );
-
+  userInput.addEventListener("keydown", event => {
+    if (event.key === "Enter") sendMessage();
+  });
 }
 
-// -------------------------------
-// IA CALORIAS
-// -------------------------------
+/* =========================
+   ESTIMATIVA DE CALORIAS
+========================= */
 
-async function estimarCalorias(
-  alimento
-) {
-
+async function estimarCalorias(alimento) {
   try {
+    const response = await fetch(CALORIA_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ alimento })
+    });
 
-    const response = await fetch(
-      CALORIA_API,
-      {
+    const data = await response.json();
 
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
-
-        body: JSON.stringify({
-          alimento
-        })
-
-      }
-    );
-
-    const data =
-      await response.json();
-
-    return (
-      parseInt(data.kcal) || 0
-    );
-
-  } catch (erro) {
-
-    console.log(erro);
-
+    return Number(data.kcal) || 0;
+  } catch (error) {
+    console.error(error);
     return 0;
-
   }
-
 }
 
-// -------------------------------
-// ÁGUA
-// -------------------------------
+async function adicionarRefeicao(tipo) {
+  const alimento = prompt("Digite os alimentos da refeição:");
 
-function adicionarAgua() {
+  if (!alimento) return;
 
-  totalAgua += 250;
-
-  aguaEl.innerText =
-    `${totalAgua} ml`;
-
-  salvarDadosHoje();
-
-}
-
-// -------------------------------
-// REFEIÇÕES
-// -------------------------------
-
-async function adicionarRefeicao(
-  tipo
-) {
-
-  const comida = prompt(
-    "Digite os alimentos:"
-  );
-
-  if (!comida) return;
-
-  const kcal =
-    await estimarCalorias(
-      comida
-    );
+  const kcal = await estimarCalorias(alimento);
 
   totalCalorias += kcal;
 
-  if (tipo === "cafe") {
-    cafeTexto.innerText =
-      comida;
-  }
-
-  if (tipo === "almoco") {
-    almocoTexto.innerText =
-      comida;
-  }
-
-  if (tipo === "jantar") {
-    jantarTexto.innerText =
-      comida;
-  }
+  localStorage.setItem("luma_total_calorias", totalCalorias);
 
   atualizarInterface();
 
-  salvarDadosHoje();
-
-  alert(
-    `🍽️ ${comida}
-
-🔥 ${kcal} kcal estimadas`
-  );
-
+  alert(`${alimento}\n\n🔥 ${kcal} kcal estimadas`);
 }
 
-// -------------------------------
-// SALVAR DADOS
-// -------------------------------
+/* =========================
+   ÁGUA
+========================= */
 
-function salvarDadosHoje() {
+function adicionarAgua() {
+  totalAgua += 250;
 
-  const hoje =
-    new Date()
-      .toLocaleDateString(
-        "pt-BR"
-      );
-
-  const dados = {
-
-    data: hoje,
-
-    cafe:
-      cafeTexto?.innerText ||
-      "",
-
-    almoco:
-      almocoTexto?.innerText ||
-      "",
-
-    jantar:
-      jantarTexto?.innerText ||
-      "",
-
-    agua: totalAgua,
-
-    calorias:
-      totalCalorias
-
-  };
-
-  const index =
-    historicoDiario.findIndex(
-      d => d.data === hoje
-    );
-
-  if (index >= 0) {
-
-    historicoDiario[index] =
-      dados;
-
-  } else {
-
-    historicoDiario.push(
-      dados
-    );
-
-  }
-
-  localStorage.setItem(
-    "historicoDiario",
-    JSON.stringify(
-      historicoDiario
-    )
-  );
-
-}
-
-// -------------------------------
-// HISTÓRICO
-// -------------------------------
-
-function carregarHistoricoPorData() {
-
-  const dataSelecionada =
-    calendarInput.value;
-
-  if (!dataSelecionada)
-    return;
-
-  const partes =
-    dataSelecionada.split(
-      "-"
-    );
-
-  const dataBR =
-    `${partes[2]}/${partes[1]}/${partes[0]}`;
-
-  const dados =
-    historicoDiario.find(
-      d => d.data === dataBR
-    );
-
-  if (!dados) {
-
-    alert(
-      "Nenhum dado encontrado"
-    );
-
-    return;
-
-  }
-
-  cafeTexto.innerText =
-    dados.cafe;
-
-  almocoTexto.innerText =
-    dados.almoco;
-
-  jantarTexto.innerText =
-    dados.jantar;
-
-  totalAgua = dados.agua;
-
-  totalCalorias =
-    dados.calorias;
+  localStorage.setItem("luma_total_agua", totalAgua);
 
   atualizarInterface();
-
 }
 
-// -------------------------------
-// INTERFACE
-// -------------------------------
+/* =========================
+   INTERFACE
+========================= */
 
 function atualizarInterface() {
-
-  if (caloriasEl) {
-
-    caloriasEl.innerText =
-      totalCalorias;
-
-  }
-
-  if (aguaEl) {
-
-    aguaEl.innerText =
-      `${totalAgua} ml`;
-
-  }
-
+  if (calConsumed) calConsumed.textContent = totalCalorias;
+  if (waterCount) waterCount.textContent = `${totalAgua} ml`;
 }
 
-// -------------------------------
-// LIMPAR
-// -------------------------------
+/* =========================
+   HUMOR
+========================= */
 
-function limparDiario() {
+document.querySelectorAll(".mood-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".mood-btn").forEach(b => {
+      b.classList.remove("active");
+    });
 
-  totalCalorias = 0;
+    btn.classList.add("active");
 
-  totalAgua = 1000;
-
-  cafeTexto.innerText =
-    "Nenhum alimento";
-
-  almocoTexto.innerText =
-    "Nenhum alimento";
-
-  jantarTexto.innerText =
-    "Nenhum alimento";
-
-  atualizarInterface();
-
-  salvarDadosHoje();
-
-}
-
-// -------------------------------
-// PESO
-// -------------------------------
-
-function salvarPeso() {
-
-  const peso = prompt(
-    "Digite seu peso:"
-  );
-
-  if (!peso) return;
-
-  const hoje =
-    new Date()
-      .toLocaleDateString(
-        "pt-BR"
-      );
-
-  historicoPeso.push({
-
-    data: hoje,
-
-    peso:
-      parseFloat(peso),
-
-    calorias:
-      totalCalorias
-
+    localStorage.setItem("lumaMood", btn.dataset.mood || "");
   });
+});
 
-  localStorage.setItem(
-    "historicoPeso",
-    JSON.stringify(
-      historicoPeso
-    )
-  );
+/* =========================
+   PWA
+========================= */
 
-  carregarGrafico();
-
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js");
+  });
 }
 
-// -------------------------------
-// GRÁFICO
-// -------------------------------
+/* =========================
+   INICIALIZAÇÃO
+========================= */
 
-function carregarGrafico() {
+atualizarInterface();
 
-  if (!graficoCanvas)
-    return;
-
-  const ctx =
-    graficoCanvas.getContext(
-      "2d"
-    );
-
-  const labels =
-    historicoPeso.map(
-      p => p.data
-    );
-
-  const pesos =
-    historicoPeso.map(
-      p => p.peso
-    );
-
-  const calorias =
-    historicoPeso.map(
-      p => p.calorias
-    );
-
-  if (window.lumaChart) {
-
-    window.lumaChart.destroy();
-
-  }
-
-  window.lumaChart =
-    new Chart(ctx, {
-
-      type: "line",
-
-      data: {
-
-        labels,
-
-        datasets: [
-
-          {
-
-            label: "Peso",
-
-            data: pesos,
-
-            borderWidth: 3,
-
-            tension: 0.4
-
-          },
-
-          {
-
-            label:
-              "Calorias",
-
-            data: calorias,
-
-            borderWidth: 3,
-
-            tension: 0.4
-
-          }
-
-        ]
-
-      },
-
-      options: {
-
-        responsive: true,
-
-        plugins: {
-
-          legend: {
-            display: true
-          }
-
-        }
-
-      }
-
-    });
-
-  if (pesos.length > 0) {
-
-    pesoAtualEl.innerText =
-      pesos[
-        pesos.length - 1
-      ] + " kg";
-
-  }
-
-  if (
-    calorias.length > 0
-  ) {
-
-    caloriasGraficoEl.innerText =
-      calorias[
-        calorias.length - 1
-      ] + " kcal";
-
-  }
-
-}
-
-// -------------------------------
-// NAVEGAÇÃO
-// -------------------------------
-
-function abrirTela(nome) {
-
-  document
-    .querySelectorAll(
-      ".screen"
-    )
-    .forEach(tela => {
-
-      tela.style.display =
-        "none";
-
-    });
-
-  document.getElementById(
-    nome
-  ).style.display = "block";
-
-}
-
-// -------------------------------
-// SERVICE WORKER
-// -------------------------------
-
-if (
-  "serviceWorker"
-  in navigator
-) {
-
-  window.addEventListener(
-    "load",
-    () => {
-
-      navigator
-        .serviceWorker
-        .register(
-          "service-worker.js"
-        );
-
-    }
-  );
-
-}
-
-// -------------------------------
-// 🌙 LUMA READY
-// -------------------------------
-
-console.log(
-  "🌙 Luma online"
-);
+console.log("Luma conectada ao Render 🌙");
